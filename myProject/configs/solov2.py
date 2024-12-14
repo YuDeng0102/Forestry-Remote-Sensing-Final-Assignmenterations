@@ -17,6 +17,7 @@ env_cfg = dict(
 load_from = None
 log_level = 'INFO'
 log_processor = dict(by_epoch=True, type='LogProcessor', window_size=50)
+max_epochs = 36
 metainfo = dict(
     classes=(
         'tree',
@@ -38,11 +39,7 @@ model = dict(
     backbone=dict(
         depth=50,
         frozen_stages=1,
-        init_cfg=dict(
-            checkpoint='open-mmlab://detectron2/resnet50_caffe',
-            type='Pretrained'),
-        norm_cfg=dict(requires_grad=False, type='BN'),
-        norm_eval=True,
+        init_cfg=dict(checkpoint='torchvision://resnet50', type='Pretrained'),
         num_stages=4,
         out_indices=(
             0,
@@ -50,23 +47,81 @@ model = dict(
             2,
             3,
         ),
-        style='caffe',
+        style='pytorch',
         type='ResNet'),
     data_preprocessor=dict(
-        bgr_to_rgb=False,
+        bgr_to_rgb=True,
         mean=[
-            103.53,
-            116.28,
             123.675,
+            116.28,
+            103.53,
         ],
         pad_mask=True,
         pad_size_divisor=32,
         std=[
-            1.0,
-            1.0,
-            1.0,
+            58.395,
+            57.12,
+            57.375,
         ],
         type='DetDataPreprocessor'),
+    mask_head=dict(
+        cls_down_index=0,
+        feat_channels=512,
+        in_channels=256,
+        loss_cls=dict(
+            alpha=0.25,
+            gamma=2.0,
+            loss_weight=1.0,
+            type='FocalLoss',
+            use_sigmoid=True),
+        loss_mask=dict(loss_weight=3.0, type='DiceLoss', use_sigmoid=True),
+        mask_feature_head=dict(
+            end_level=3,
+            feat_channels=128,
+            mask_stride=4,
+            norm_cfg=dict(num_groups=32, requires_grad=True, type='GN'),
+            out_channels=256,
+            start_level=0),
+        num_classes=2,
+        num_grids=[
+            40,
+            36,
+            24,
+            16,
+            12,
+        ],
+        pos_scale=0.2,
+        scale_ranges=(
+            (
+                1,
+                96,
+            ),
+            (
+                48,
+                192,
+            ),
+            (
+                96,
+                384,
+            ),
+            (
+                192,
+                768,
+            ),
+            (
+                384,
+                2048,
+            ),
+        ),
+        stacked_convs=4,
+        strides=[
+            8,
+            8,
+            16,
+            32,
+            32,
+        ],
+        type='SOLOV2Head'),
     neck=dict(
         in_channels=[
             256,
@@ -76,165 +131,36 @@ model = dict(
         ],
         num_outs=5,
         out_channels=256,
+        start_level=0,
         type='FPN'),
-    roi_head=dict(
-        bbox_head=dict(
-            bbox_coder=dict(
-                target_means=[
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                ],
-                target_stds=[
-                    0.1,
-                    0.1,
-                    0.2,
-                    0.2,
-                ],
-                type='DeltaXYWHBBoxCoder'),
-            fc_out_channels=1024,
-            in_channels=256,
-            loss_bbox=dict(loss_weight=1.0, type='L1Loss'),
-            loss_cls=dict(
-                loss_weight=1.0, type='CrossEntropyLoss', use_sigmoid=False),
-            num_classes=2,
-            reg_class_agnostic=False,
-            roi_feat_size=7,
-            type='Shared2FCBBoxHead'),
-        bbox_roi_extractor=dict(
-            featmap_strides=[
-                4,
-                8,
-                16,
-                32,
-            ],
-            out_channels=256,
-            roi_layer=dict(output_size=7, sampling_ratio=0, type='RoIAlign'),
-            type='SingleRoIExtractor'),
-        mask_head=dict(
-            conv_out_channels=256,
-            in_channels=256,
-            loss_mask=dict(
-                loss_weight=1.0, type='CrossEntropyLoss', use_mask=True),
-            num_classes=2,
-            num_convs=4,
-            type='FCNMaskHead'),
-        mask_roi_extractor=dict(
-            featmap_strides=[
-                4,
-                8,
-                16,
-                32,
-            ],
-            out_channels=256,
-            roi_layer=dict(output_size=14, sampling_ratio=0, type='RoIAlign'),
-            type='SingleRoIExtractor'),
-        type='StandardRoIHead'),
-    rpn_head=dict(
-        anchor_generator=dict(
-            ratios=[
-                0.5,
-                1.0,
-                2.0,
-            ],
-            scales=[
-                8,
-            ],
-            strides=[
-                4,
-                8,
-                16,
-                32,
-                64,
-            ],
-            type='AnchorGenerator'),
-        bbox_coder=dict(
-            target_means=[
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-            ],
-            target_stds=[
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-            ],
-            type='DeltaXYWHBBoxCoder'),
-        feat_channels=256,
-        in_channels=256,
-        loss_bbox=dict(loss_weight=1.0, type='L1Loss'),
-        loss_cls=dict(
-            loss_weight=1.0, type='CrossEntropyLoss', use_sigmoid=True),
-        type='RPNHead'),
     test_cfg=dict(
-        rcnn=dict(
-            mask_thr_binary=0.5,
-            max_per_img=100,
-            nms=dict(iou_threshold=0.5, type='nms'),
-            score_thr=0.05),
-        rpn=dict(
-            max_per_img=1000,
-            min_bbox_size=0,
-            nms=dict(iou_threshold=0.7, type='nms'),
-            nms_pre=1000)),
-    train_cfg=dict(
-        rcnn=dict(
-            assigner=dict(
-                ignore_iof_thr=-1,
-                match_low_quality=True,
-                min_pos_iou=0.5,
-                neg_iou_thr=0.5,
-                pos_iou_thr=0.5,
-                type='MaxIoUAssigner'),
-            debug=False,
-            mask_size=28,
-            pos_weight=-1,
-            sampler=dict(
-                add_gt_as_proposals=True,
-                neg_pos_ub=-1,
-                num=512,
-                pos_fraction=0.25,
-                type='RandomSampler')),
-        rpn=dict(
-            allowed_border=-1,
-            assigner=dict(
-                ignore_iof_thr=-1,
-                match_low_quality=True,
-                min_pos_iou=0.3,
-                neg_iou_thr=0.3,
-                pos_iou_thr=0.7,
-                type='MaxIoUAssigner'),
-            debug=False,
-            pos_weight=-1,
-            sampler=dict(
-                add_gt_as_proposals=False,
-                neg_pos_ub=-1,
-                num=256,
-                pos_fraction=0.5,
-                type='RandomSampler')),
-        rpn_proposal=dict(
-            max_per_img=1000,
-            min_bbox_size=0,
-            nms=dict(iou_threshold=0.7, type='nms'),
-            nms_pre=2000)),
-    type='MaskRCNN')
+        filter_thr=0.05,
+        kernel='gaussian',
+        mask_thr=0.5,
+        max_per_img=100,
+        nms_pre=500,
+        score_thr=0.1,
+        sigma=2.0),
+    type='SOLOv2')
 optim_wrapper = dict(
+    clip_grad=dict(max_norm=35, norm_type=2),
     optimizer=dict(lr=0.0025, momentum=0.9, type='SGD', weight_decay=0.0001),
     type='OptimWrapper')
 param_scheduler = [
     dict(
-        begin=0, by_epoch=False, end=500, start_factor=0.001, type='LinearLR'),
+        begin=0,
+        by_epoch=False,
+        end=500,
+        start_factor=0.3333333333333333,
+        type='LinearLR'),
     dict(
         begin=0,
         by_epoch=True,
-        end=30,
+        end=36,
         gamma=0.1,
         milestones=[
-            15,
-            25,
+            27,
+            33,
         ],
         type='MultiStepLR'),
 ]
@@ -291,10 +217,7 @@ test_evaluator = dict(
     ann_file='./mydataset/val.json',
     backend_args=None,
     format_only=False,
-    metric=[
-        'bbox',
-        'segm',
-    ],
+    metric='segm',
     type='CocoMetric')
 test_pipeline = [
     dict(backend_args=None, type='LoadImageFromFile'),
@@ -342,29 +265,13 @@ train_dataloader = dict(
             ]),
         pipeline=[
             dict(backend_args=None, type='LoadImageFromFile'),
-            dict(
-                poly2mask=False,
-                type='LoadAnnotations',
-                with_bbox=True,
-                with_mask=True),
+            dict(type='LoadAnnotations', with_bbox=True, with_mask=True),
             dict(
                 keep_ratio=True,
                 scales=[
                     (
                         1333,
-                        640,
-                    ),
-                    (
-                        1333,
-                        672,
-                    ),
-                    (
-                        1333,
-                        704,
-                    ),
-                    (
-                        1333,
-                        736,
+                        800,
                     ),
                     (
                         1333,
@@ -372,7 +279,19 @@ train_dataloader = dict(
                     ),
                     (
                         1333,
-                        800,
+                        736,
+                    ),
+                    (
+                        1333,
+                        704,
+                    ),
+                    (
+                        1333,
+                        672,
+                    ),
+                    (
+                        1333,
+                        640,
                     ),
                 ],
                 type='RandomChoiceResize'),
@@ -385,29 +304,13 @@ train_dataloader = dict(
     sampler=dict(shuffle=True, type='DefaultSampler'))
 train_pipeline = [
     dict(backend_args=None, type='LoadImageFromFile'),
-    dict(
-        poly2mask=False,
-        type='LoadAnnotations',
-        with_bbox=True,
-        with_mask=True),
+    dict(type='LoadAnnotations', with_bbox=True, with_mask=True),
     dict(
         keep_ratio=True,
         scales=[
             (
                 1333,
-                640,
-            ),
-            (
-                1333,
-                672,
-            ),
-            (
-                1333,
-                704,
-            ),
-            (
-                1333,
-                736,
+                800,
             ),
             (
                 1333,
@@ -415,7 +318,19 @@ train_pipeline = [
             ),
             (
                 1333,
-                800,
+                736,
+            ),
+            (
+                1333,
+                704,
+            ),
+            (
+                1333,
+                672,
+            ),
+            (
+                1333,
+                640,
             ),
         ],
         type='RandomChoiceResize'),
@@ -474,10 +389,7 @@ val_evaluator = dict(
     ann_file='./mydataset/val.json',
     backend_args=None,
     format_only=False,
-    metric=[
-        'bbox',
-        'segm',
-    ],
+    metric='segm',
     type='CocoMetric')
 vis_backends = [
     dict(type='LocalVisBackend'),
@@ -488,4 +400,4 @@ visualizer = dict(
     vis_backends=[
         dict(type='LocalVisBackend'),
     ])
-work_dir = './work-dir/mask-rcnn'
+work_dir = './work-dir/solov2'
